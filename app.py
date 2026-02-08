@@ -7,10 +7,12 @@ import altair as alt
 st.set_page_config(page_title="Future Wealth Planner", page_icon="💰", layout="wide")
 
 # --- INITIALIZE SESSION STATE ---
+# We still need session state to know *when* to draw the report, but not to create the tab
 if 'report_ready' not in st.session_state:
     st.session_state.report_ready = False
 
 def run_calculation():
+    """Sets the flag to show the report content."""
     st.session_state.report_ready = True
 
 # --- HEADER ---
@@ -29,14 +31,13 @@ with st.sidebar:
     st.markdown("---")
     st.button("Calculate Financial Future", on_click=run_calculation, use_container_width=True, type="primary")
 
-# --- DEFINE TABS ---
-tab_list = ["💰 Income", "📈 Assets & Investments", "💸 Expenses", "🏡 Life Events"]
-if st.session_state.report_ready:
-    tab_list.append("📊 Forecast & Report")
-tabs = st.tabs(tab_list)
+# --- DEFINE TABS (Now static, as per your suggestion) ---
+tab_income, tab_assets, tab_expenses, tab_events, tab_report = st.tabs([
+    "💰 Income", "📈 Assets & Investments", "💸 Expenses", "🏡 Life Events", "📊 Forecast & Report"
+])
 
 # --- INPUT TABS ---
-with tabs[0]: # Income Tab
+with tab_income:
     st.header("Income Sources"); st.write("Detail all sources of income. Uncheck any source to exclude it from the forecast.")
     c1, c2 = st.columns(2)
     with c1:
@@ -68,14 +69,17 @@ with tabs[0]: # Income Tab
             pension2_start_age = st.number_input("Start Age", 40, 80, 65, key="p2_start")
             pension2_annual_amount = st.number_input("Annual Amount ($)", 0, None, 12000, 100, key="p2_amount")
 
-with tabs[1]: st.header("Assets & Investments"); st.info("Functionality for this tab will be built next.")
-with tabs[2]: st.header("Expenses"); st.info("Functionality for this tab will be built next.")
-with tabs[3]: st.header("Major Life Events"); st.info("Functionality for this tab will be built next.")
+with tab_assets: st.header("Assets & Investments"); st.info("Functionality for this tab will be built next.")
+with tab_expenses: st.header("Expenses"); st.info("Functionality for this tab will be built next.")
+with tab_events: st.header("Major Life Events"); st.info("Functionality for this tab will be built next.")
 
-# --- CONDITIONAL REPORTING TAB ---
-if st.session_state.report_ready:
-    with tabs[-1]:
-        st.header("Your Financial Forecast")
+# --- REPORTING TAB ---
+with tab_report:
+    st.header("Your Financial Forecast")
+    if not st.session_state.report_ready:
+        st.info("Click the 'Calculate Financial Future' button in the sidebar to generate your forecast.")
+    else:
+        # --- Data Preparation ---
         start_year = datetime.date.today().year; years = list(range(start_year, start_year + forecast_length + 1)); ages = list(range(current_age, current_age + forecast_length + 1))
         income_df = pd.DataFrame(index=years, data={'Age': ages}); event_list = []
         if inc_job1:
@@ -108,17 +112,15 @@ if st.session_state.report_ready:
             x=alt.X('Age:O', title='Your Age'), y=alt.Y('Value:Q', title='Annual Income', axis=alt.Axis(format='$,.0f')), color='Source:N', tooltip=['Year', 'Age', 'Source', alt.Tooltip('Value:Q', format='$,.0f')]
         ).properties(title='Income Streams and Life Events Over Time')
         
-        # *** ROBUST FIX: Only create and layer event markers if the event_list is not empty ***
+        # *** FINAL FIX: Layering logic is now robust ***
         if event_list:
             events_df = pd.DataFrame(event_list)
             event_markers = alt.Chart(events_df).mark_circle(size=150, stroke='white', strokeWidth=2).encode(
                 x=alt.X('Age:O'), y=alt.Y('Value:Q'), color=alt.Color('Color:N', scale=None), tooltip=['Age', 'Event']
             )
-            # Layer the charts and use resolve_scale because it's now a valid LayerChart
-            final_chart = alt.layer(line_chart, event_markers).resolve_scale(y='union')
+            final_chart = alt.layer(line_chart, event_markers) # The problematic .resolve_scale() is removed
         else:
-            # If there are no events, the final chart is just the line chart
-            final_chart = line_chart
+            final_chart = line_chart # If no events, the chart is just the lines
 
         st.altair_chart(final_chart.interactive(), use_container_width=True)
 
