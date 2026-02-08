@@ -108,17 +108,19 @@ if st.session_state.report_ready:
             x=alt.X('Age:O', title='Your Age'), y=alt.Y('Value:Q', title='Annual Income', axis=alt.Axis(format='$,.0f')), color='Source:N', tooltip=['Year', 'Age', 'Source', alt.Tooltip('Value:Q', format='$,.0f')]
         ).properties(title='Income Streams and Life Events Over Time')
         
-        # *** BUG FIX: Only create and layer event markers if the event_list is not empty ***
+        # *** ROBUST FIX: Only create and layer event markers if the event_list is not empty ***
         if event_list:
             events_df = pd.DataFrame(event_list)
             event_markers = alt.Chart(events_df).mark_circle(size=150, stroke='white', strokeWidth=2).encode(
                 x=alt.X('Age:O'), y=alt.Y('Value:Q'), color=alt.Color('Color:N', scale=None), tooltip=['Age', 'Event']
             )
-            final_chart = alt.layer(line_chart, event_markers).interactive().resolve_scale(y='union')
+            # Layer the charts and use resolve_scale because it's now a valid LayerChart
+            final_chart = alt.layer(line_chart, event_markers).resolve_scale(y='union')
         else:
-            final_chart = line_chart.interactive().resolve_scale(y='union')
+            # If there are no events, the final chart is just the line chart
+            final_chart = line_chart
 
-        st.altair_chart(final_chart, use_container_width=True)
+        st.altair_chart(final_chart.interactive(), use_container_width=True)
 
         # --- Summary Report ---
         st.subheader("Narrative Summary")
