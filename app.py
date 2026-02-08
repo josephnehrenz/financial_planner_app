@@ -4,6 +4,7 @@ import datetime
 import altair as alt
 import numpy_financial as npf
 import plotly.express as px
+import plotly.graph_objects as go
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Future Wealth Planner", page_icon="💰", layout="wide")
@@ -54,7 +55,7 @@ with tab_expenses:
     st.header("Expenses"); st.write("Add one-time costs, recurring loans, or constant monthly expenses.")
     st.button("Add Expense", on_click=add_expense, type="primary")
     for i, expense in enumerate(st.session_state.expenses):
-        st.markdown(f"---"); c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
+        st.markdown("---"); c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
         with c1:
             expense['name'] = st.text_input("Expense Name", expense['name'], key=f"exp_name_{i}")
             expense['type'] = st.selectbox("Type", ["Amortized Loan", "Constant", "One-Time Cost"], index=["Amortized Loan", "Constant", "One-Time Cost"].index(expense['type']), key=f"exp_type_{i}")
@@ -83,35 +84,40 @@ with tab_report:
         start_year = datetime.date.today().year; years = list(range(start_year, start_year + forecast_length + 1)); ages = list(range(current_age, current_age + forecast_length + 1))
         df = pd.DataFrame(index=years, data={'Age': ages})
         
-        # ... (Asset & Income calculations are unchanged) ...
-        asset_cols, drawdown_cols = [], [];
+        # ... (Asset, Income, and Expense calculations are largely unchanged, but we capture more data) ...
+        total_contributions = 0
+        asset_cols, drawdown_cols = [], []
         if inc_pretax: df[pretax_name] = 0; df.loc[start_year, pretax_name] = pretax_balance; asset_cols.append(pretax_name); df[f"{pretax_name} Drawdown"] = 0; drawdown_cols.append(f"{pretax_name} Drawdown")
         if inc_roth: df[roth_name] = 0; df.loc[start_year, roth_name] = roth_balance; asset_cols.append(roth_name); df[f"{roth_name} Drawdown"] = 0; drawdown_cols.append(f"{roth_name} Drawdown")
         if inc_brokerage: df[brokerage_name] = 0; df.loc[start_year, brokerage_name] = brokerage_balance; asset_cols.append(brokerage_name); df[f"{brokerage_name} Drawdown"] = 0; drawdown_cols.append(f"{brokerage_name} Drawdown")
+        
         for i, year in enumerate(years[1:]):
             prev_year, age = years[i], df.loc[year, 'Age']
             for col in asset_cols:
                 prev_balance = df.loc[prev_year, col]; growth = prev_balance * (investment_return / 100); drawdown = 0
                 if age < retirement_age:
-                    contrib = {'401(k)/Traditional IRA': pretax_contrib, 'Roth IRA/401(k)': roth_contrib, 'Taxable Brokerage': brokerage_contrib}.get(col, 0) * 12
+                    contrib_map = {'401(k)/Traditional IRA': pretax_contrib, 'Roth IRA/401(k)': roth_contrib, 'Taxable Brokerage': brokerage_contrib}
+                    contrib = contrib_map.get(col, 0) * 12
+                    total_contributions += contrib
                     df.loc[year, col] = prev_balance + growth + contrib
                 else:
                     wd_start, wd_rate = {'401(k)/Traditional IRA': (pretax_wd_start, pretax_wd_rate), 'Roth IRA/401(k)': (roth_wd_start, roth_wd_rate), 'Taxable Brokerage': (brokerage_wd_start, brokerage_wd_rate)}.get(col)
                     if (col == pretax_name and age >= rmd_start_age) or age >= wd_start:
                         drawdown = (prev_balance + growth) * (wd_rate / 100); df.loc[year, f"{col} Drawdown"] = drawdown
                     df.loc[year, col] = prev_balance + growth - drawdown
+
         if inc_job1: df[job1_name] = [(job1_income * (1 + job1_growth / 100)**i) if age < retirement_age else 0 for i, age in enumerate(ages)]
         if inc_job2: df[job2_name] = [(job2_income * (1 + job2_growth / 100)**i) if age < retirement_age else 0 for i, age in enumerate(ages)]
         if inc_ss: df[ss_name] = [ss_annual_amount if age >= ss_start_age else 0 for age in ages]
         if inc_pension1: df[pension1_name] = [pension1_annual_amount if age >= pension1_start_age else 0 for age in ages]
         if inc_pension2: df[pension2_name] = [pension2_annual_amount if age >= pension2_start_age else 0 for age in ages]
-
-        # --- Expense Calculations ---
+        
         expense_cols = []; df['Total Expenses'] = 0
+        event_list = []
         for expense in st.session_state.expenses:
             name, type, start_age, balance = expense['name'], expense['type'], expense['start_age'], expense['balance']
             df[name] = 0; expense_cols.append(name)
-            if type == 'One-Time Cost' and start_age in ages: df.loc[df['Age'] == start_age, name] = -balance
+            if type == 'One-Time Cost' and start_age in ages: df.loc[df['Age'] == start_age, name] = -balance; event_list.append({'Age': start_age, 'Value': -balance, 'Event': f'{name} Occurs', 'Source': 'Total Expenses', 'Color': 'red'})
             elif type == 'Constant' and start_age in ages: end_age = expense.get('end_age', 120); df.loc[(df['Age'] >= start_age) & (df['Age'] < end_age), name] = -(balance * 12)
             elif type == 'Amortized Loan':
                 pmt, rate = expense.get('payment', 0), expense.get('rate', 0)
@@ -120,85 +126,85 @@ with tab_report:
                         monthly_rate = (rate / 100) / 12 if rate > 0 else 0; nper = npf.nper(monthly_rate, -pmt, balance) if rate > 0 else balance / pmt; payoff_age = start_age + (nper / 12)
                         for age_ in range(start_age, int(payoff_age) + 1):
                             if age_ in ages: df.loc[df['Age'] == age_, name] = -(pmt * 12)
+                        if start_age in ages: event_list.append({'Age': start_age, 'Value': -(pmt*12), 'Event': f'{name} Begins', 'Source': 'Total Expenses', 'Color': 'red'})
+                        if int(payoff_age) in ages: event_list.append({'Age': int(payoff_age), 'Value': df.loc[df['Age'] == int(payoff_age), name].values[0], 'Event': f'{name} Paid Off', 'Source': 'Total Expenses', 'Color': 'green'})
                     except (ValueError, OverflowError): pass
             df['Total Expenses'] += df[name]
-
-        # --- Final Aggregation ---
+        
         income_cols = [c for c in [job1_name, job2_name, ss_name, pension1_name, pension2_name] + drawdown_cols if c in df.columns]; df['Total Income'] = df[income_cols].sum(axis=1)
         df['Net Annual Cash Flow'] = df['Total Income'] + df['Total Expenses']
-        
-        # --- Create Hover Data for Plotly ---
         df['hover_text'] = df[income_cols].apply(lambda row: '<br>'.join([f"{col}: ${val:,.0f}" for col, val in row.items() if val > 0]), axis=1)
 
         # --- PLOTLY CASH FLOW CHART ---
         st.subheader("Interactive Cash Flow Forecast")
         chart_cols = income_cols + ['Total Expenses', 'Net Annual Cash Flow', 'Total Income']
         df_melted = df.reset_index().melt(id_vars=['index', 'Age', 'hover_text'], value_vars=chart_cols, var_name='Source', value_name='Value'); df_melted.rename(columns={'index':'Year'}, inplace=True)
-        
         fig = px.line(df_melted, x="Age", y="Value", color='Source', custom_data=['hover_text'])
-        fig.update_layout(title="Annual Cash Flow Over Time", xaxis_title="Your Age", yaxis_title="Annual Cash Flow", yaxis_tickformat='$,.0f')
-        fig.update_traces(
-            hovertemplate="<br>".join([
-                "<b>Age: %{x}</b>",
-                "Source: %{fullData.name}",
-                "Amount: %{y:$,.0f}",
-                "<br><b>Total Income Breakdown:</b><br>%{customdata[0]}",
-            ])
-        )
+        fig.update_layout(title_text="Annual Cash Flow Over Time", xaxis_title="Your Age", yaxis_title="Annual Cash Flow", yaxis_tickformat='$,.0f', legend_title_text='Cash Flow Source')
+        fig.update_traces(hovertemplate="<b>%{fullData.name}</b><br>Age: %{x}<br>Amount: %{y:$,.0f}<extra></extra>")
+        fig.for_each_trace(lambda trace: trace.update(hovertemplate = trace.hovertemplate.replace('%{customdata[0]}', '')) if trace.name != "Total Income" else trace.update(hovertemplate = "<b>%{fullData.name}</b><br>Age: %{x}<br>Amount: %{y:$,.0f}<br><br><b>Income Breakdown:</b><br>%{customdata[0]}<extra></extra>"))
+        for event in event_list: fig.add_trace(go.Scatter(x=[event['Age']], y=[event['Value']], mode='markers', marker=dict(color=event['Color'], size=10, symbol='diamond'), name=event['Event'], hovertemplate="<b>%{name}</b><br>Age: %{x}<br>Amount: %{y:$,.0f}<extra></extra>"))
         st.plotly_chart(fig, use_container_width=True)
         
-        # --- CFP-STYLE REPORT ---
-        st.markdown("---")
-        st.subheader("Executive Summary")
+        # --- PROFESSIONAL CFP-STYLE REPORT ---
+        st.markdown("---"); st.subheader("Executive Summary")
         ret_income_avg = df[df['Age'] >= retirement_age]['Total Income'].mean()
         pre_ret_income_avg = df[(df['Age'] >= retirement_age - 5) & (df['Age'] < retirement_age)]['Total Income'].mean()
         replacement_ratio = (ret_income_avg / pre_ret_income_avg) * 100 if pre_ret_income_avg > 0 else 0
-        net_worth_at_retirement = df.loc[df['Age'] == retirement_age, asset_cols].sum().sum()
         
-        summary_color = "green" if replacement_ratio >= 70 else "orange" if replacement_ratio >= 50 else "red"
-        st.markdown(f"### <span style='color:{summary_color};'>Your Financial Outlook is {summary_color.capitalize()}</span>", unsafe_allow_html=True)
-        if summary_color == 'green': st.write("Your current plan puts you on a solid trajectory. Your projected retirement income comfortably replaces a significant portion of your working income.")
-        elif summary_color == 'orange': st.write("Your plan is on a cautionary path, replacing a moderate portion of your income. Consider increasing savings or adjusting retirement expectations.")
-        else: st.write("Your plan requires attention. Your projected retirement income is low compared to your working income. It is highly recommended to review savings rates, investment choices, or retirement timing.")
-
-        st.markdown("---")
-        st.subheader("Retirement Snapshot")
+        if replacement_ratio >= 85: outlook, color = "Excellent", "green"
+        elif replacement_ratio >= 70: outlook, color = "Good", "green"
+        elif replacement_ratio >= 50: outlook, color = "Fair", "orange"
+        else: outlook, color = "Needs Attention", "red"
+        st.markdown(f"### <span style='color:{color};'>Your Financial Outlook is {outlook}</span>", unsafe_allow_html=True)
+        
+        st.markdown("---"); st.subheader("Retirement Snapshot")
+        net_worth_at_retirement = df.loc[df['Age'] == retirement_age, asset_cols].sum().sum()
+        total_growth = df[asset_cols].iloc[-1].sum() - df[asset_cols].iloc[0].sum() - total_contributions
+        depletion_years = df[(df['Age'] > retirement_age) & (df[asset_cols].sum(axis=1) <= 0)]
+        depletion_age = depletion_years['Age'].min() if not depletion_years.empty else "N/A"
+        
         c1, c2, c3 = st.columns(3)
         c1.metric("Projected Net Worth at Retirement", f"${net_worth_at_retirement:,.0f}")
         c2.metric("Avg. Annual Retirement Income", f"${ret_income_avg:,.0f}")
         c3.metric("Income Replacement Ratio", f"{replacement_ratio:.0f}%")
         
-        ret_income_sources = df[df['Age'] >= retirement_age][income_cols].mean()
-        ret_income_sources = ret_income_sources[ret_income_sources > 0]
-        if not ret_income_sources.empty:
-            st.write("**Average Retirement Income Breakdown:**")
-            st.dataframe(ret_income_sources.apply(lambda x: f"${x:,.0f} ({x/ret_income_sources.sum()*100:.0f}%)"), use_container_width=True)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Lifetime Contributions", f"${total_contributions:,.0f}")
+        c2.metric("Total Investment Growth", f"${total_growth:,.0f}")
+        c3.metric("Portfolio Depletion Age", str(depletion_age))
 
-        st.markdown("---")
-        st.subheader("Asset & Expense Analysis")
+        ret_income_sources = df[df['Age'] >= retirement_age][income_cols].mean(); ret_income_sources = ret_income_sources[ret_income_sources > 0]
+        if not ret_income_sources.empty:
+            st.write("**Average Retirement Income Breakdown:**"); st.dataframe(ret_income_sources.apply(lambda x: f"${x:,.0f} ({x/ret_income_sources.sum()*100:.0f}%)"), use_container_width=True)
+
+        st.markdown("---"); st.subheader("Asset & Expense Analysis")
         c1, c2 = st.columns(2)
         with c1:
             st.write("**Asset Summary**")
-            total_assets_end = df[asset_cols].iloc[-1].sum()
-            st.write(f"Your investment portfolio is projected to grow to **${total_assets_end:,.0f}** by the end of the forecast period.")
+            million_years = df[df[asset_cols].sum(axis=1) >= 1_000_000]
+            million_age = million_years['Age'].min() if not million_years.empty else None
+            st.write(f"Your portfolio is projected to grow from **${df[asset_cols].iloc[0].sum():,.0f}** today to **${df[asset_cols].iloc[-1].sum():,.0f}** by the end of the forecast period.")
+            if million_age: st.write(f"You are on track to become a millionaire at age **{million_age}**.")
         with c2:
             st.write("**Expense Summary**")
-            total_expenses = df[expense_cols].sum().sum()
-            st.write(f"You are projected to pay a total of **${-total_expenses:,.0f}** towards your major expenses over the forecast period.")
+            loan_expenses = [e['name'] for e in st.session_state.expenses if e['type'] == 'Amortized Loan']
+            last_loan_payoff = 0
+            if loan_expenses:
+                last_loan_payoff_df = df[df[loan_expenses].sum(axis=1) == 0]
+                if not last_loan_payoff_df.empty: last_loan_payoff = last_loan_payoff_df['Age'].min()
+            st.write(f"You are projected to pay a total of **${-df[expense_cols].sum().sum():,.0f}** towards your major expenses.")
+            if last_loan_payoff > 0: st.write(f"A significant milestone occurs at age **{last_loan_payoff}** when your final major loan is paid off, freeing up cash flow.")
 
-        # --- Other Charts & Data Table ---
+        # --- Other Charts ---
         st.markdown("---")
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         with c1:
-            st.subheader("Expense Forecast");
-            expense_melted = df.reset_index().melt(id_vars=['index', 'Age'], value_vars=expense_cols, var_name='Expense', value_name='Cost'); expense_melted['Cost'] = -expense_melted['Cost']
-            expense_chart = alt.Chart(expense_melted[expense_melted['Cost'] > 0]).mark_area(opacity=0.8).encode(x=alt.X('Age:O', title='Your Age'), y=alt.Y('Cost:Q', title='Annual Cost', axis=alt.Axis(format='$,.0f')), color='Expense:N').properties(title="Projected Annual Expenses")
-            st.altair_chart(expense_chart.interactive(), use_container_width=True)
+            st.subheader("Income Composition"); income_melted = df.reset_index().melt(id_vars=['Age'], value_vars=income_cols, var_name='Source', value_name='Value'); income_chart = alt.Chart(income_melted[income_melted['Value']>0]).mark_area(opacity=0.8).encode(x=alt.X('Age:O'), y=alt.Y('Value:Q', stack='zero', axis=alt.Axis(format='$,.0f')), color='Source:N').properties(title=""); st.altair_chart(income_chart.interactive(), use_container_width=True)
         with c2:
-            st.subheader("Asset Growth Forecast");
-            assets_melted = df.reset_index().melt(id_vars=['index', 'Age'], value_vars=asset_cols, var_name='Account', value_name='Balance');
-            asset_chart = alt.Chart(assets_melted).mark_area(opacity=0.8).encode(x=alt.X('Age:O', title='Your Age'), y=alt.Y('Balance:Q', title='Account Balance', axis=alt.Axis(format='$,.0f')), color='Account:N').properties(title="Projected Asset Growth Over Time")
-            st.altair_chart(asset_chart.interactive(), use_container_width=True)
+            st.subheader("Expense Composition"); expense_melted = df.reset_index().melt(id_vars=['Age'], value_vars=expense_cols, var_name='Expense', value_name='Cost'); expense_melted['Cost'] = -expense_melted['Cost']; expense_chart = alt.Chart(expense_melted[expense_melted['Cost'] > 0]).mark_area(opacity=0.8).encode(x=alt.X('Age:O'), y=alt.Y('Cost:Q', stack='zero', axis=alt.Axis(format='$,.0f')), color='Expense:N').properties(title=""); st.altair_chart(expense_chart.interactive(), use_container_width=True)
+        with c3:
+            st.subheader("Asset Growth"); assets_melted = df.reset_index().melt(id_vars=['Age'], value_vars=asset_cols, var_name='Account', value_name='Balance'); asset_chart = alt.Chart(assets_melted).mark_area(opacity=0.8).encode(x=alt.X('Age:O'), y=alt.Y('Balance:Q', stack='zero', axis=alt.Axis(format='$,.0f')), color='Account:N').properties(title=""); st.altair_chart(asset_chart.interactive(), use_container_width=True)
 
         with st.expander("View Detailed Forecast Data Table"):
             display_df = df.copy().set_index('Age');
