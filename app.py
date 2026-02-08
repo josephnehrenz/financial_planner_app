@@ -100,14 +100,14 @@ with tab_report:
                     if (col == pretax_name and age >= rmd_start_age) or age >= wd_start: drawdown = (prev_balance + growth) * (wd_rate / 100); df.loc[year, f"{col} Drawdown"] = drawdown
                     df.loc[year, col] = prev_balance + growth - drawdown
         
-        if inc_job1 and job1_name: df[job1_name] = [(job1_income * (1 + job1_growth / 100)**i) if age < retirement_age else 0 for i, age in enumerate(ages)]; event_list.append({'Age': retirement_age - 1, 'Value': df.loc[df['Age']==retirement_age-1, job1_name].values[0], 'Event': f'{job1_name} Ends', 'Source': job1_name})
-        if inc_job2 and job2_name: df[job2_name] = [(job2_income * (1 + job2_growth / 100)**i) if age < retirement_age else 0 for i, age in enumerate(ages)]; event_list.append({'Age': retirement_age - 1, 'Value': df.loc[df['Age']==retirement_age-1, job2_name].values[0], 'Event': f'{job2_name} Ends', 'Source': job2_name})
-        if inc_ss and ss_name: df[ss_name] = [ss_annual_amount if age >= ss_start_age else 0 for age in ages]; event_list.append({'Age': ss_start_age, 'Value': ss_annual_amount, 'Event': f'{ss_name} Begins', 'Source': ss_name})
-        if inc_pension1 and pension1_name: df[pension1_name] = [pension1_annual_amount if age >= pension1_start_age else 0 for age in ages]; event_list.append({'Age': pension1_start_age, 'Value': pension1_annual_amount, 'Event': f'{pension1_name} Begins', 'Source': pension1_name})
-        if inc_pension2 and pension2_name: df[pension2_name] = [pension2_annual_amount if age >= pension2_start_age else 0 for age in ages]; event_list.append({'Age': pension2_start_age, 'Value': pension2_annual_amount, 'Event': f'{pension2_name} Begins', 'Source': pension2_name})
+        if inc_job1 and job1_name and (retirement_age - 1) in ages: df[job1_name] = [(job1_income * (1 + job1_growth / 100)**i) if age < retirement_age else 0 for i, age in enumerate(ages)]; event_list.append({'Age': retirement_age - 1, 'Value': df.loc[df['Age']==retirement_age-1, job1_name].values[0], 'Event': f'{job1_name} Ends', 'Source': job1_name})
+        if inc_job2 and job2_name and (retirement_age - 1) in ages: df[job2_name] = [(job2_income * (1 + job2_growth / 100)**i) if age < retirement_age else 0 for i, age in enumerate(ages)]; event_list.append({'Age': retirement_age - 1, 'Value': df.loc[df['Age']==retirement_age-1, job2_name].values[0], 'Event': f'{job2_name} Ends', 'Source': job2_name})
+        if inc_ss and ss_name and ss_start_age in ages: df[ss_name] = [ss_annual_amount if age >= ss_start_age else 0 for age in ages]; event_list.append({'Age': ss_start_age, 'Value': ss_annual_amount, 'Event': f'{ss_name} Begins', 'Source': ss_name})
+        if inc_pension1 and pension1_name and pension1_start_age in ages: df[pension1_name] = [pension1_annual_amount if age >= pension1_start_age else 0 for age in ages]; event_list.append({'Age': pension1_start_age, 'Value': pension1_annual_amount, 'Event': f'{pension1_name} Begins', 'Source': pension1_name})
+        if inc_pension2 and pension2_name and pension2_start_age in ages: df[pension2_name] = [pension2_annual_amount if age >= pension2_start_age else 0 for age in ages]; event_list.append({'Age': pension2_start_age, 'Value': pension2_annual_amount, 'Event': f'{pension2_name} Begins', 'Source': pension2_name})
         for col in drawdown_cols:
             first_draw_year = df[df[col] > 0].first_valid_index()
-            if first_draw_year: age = df.loc[first_draw_year, 'Age']; val = df.loc[first_draw_year, col]; event_list.append({'Age': age, 'Value': val, 'Event': f'{col} Begins', 'Source': col})
+            if first_draw_year and first_draw_year in df.index: age = df.loc[first_draw_year, 'Age']; val = df.loc[first_draw_year, col]; event_list.append({'Age': age, 'Value': val, 'Event': f'{col} Begins', 'Source': col})
         
         expense_cols = []; df['Total Expenses'] = 0
         for expense in st.session_state.expenses:
@@ -147,8 +147,8 @@ with tab_report:
         color_map = {trace.name: trace.line.color for trace in fig.data}
         for event in event_list:
             source_color = color_map.get(event['Source'])
-            if source_color and event.get('Value') is not None:
-                fig.add_trace(go.Scatter(x=[event['Age']], y=[event['Value']], mode='markers', marker=dict(color=source_color, size=10, symbol='diamond', line=dict(width=1,color='DarkSlateGrey')), name=event['Event'], hovertemplate="<b><u>Event: %{name}</u></b><br><b>Age:</b> %{x}<br><b>Amount:</b> %{y:$,.0f}<extra></extra>", showlegend=False))
+            if source_color and event.get('Value') is not None and event.get('Age') in ages:
+                fig.add_trace(go.Scatter(x=[event['Age']], y=[event['Value']], mode='markers', marker=dict(color=source_color, size=12, symbol='diamond', line=dict(width=2,color='DarkSlateGrey')), name=event['Event'], hovertemplate="<b><u>Event: %{name}</u></b><br><b>Age:</b> %{x}<br><b>Amount:</b> %{y:$,.0f}<extra></extra>", showlegend=False))
         st.plotly_chart(fig, use_container_width=True)
         
         # --- PROFESSIONAL CFP-STYLE REPORT ---
@@ -195,10 +195,18 @@ with tab_report:
             st.write("**Expense Summary**")
             loan_expenses = [e['name'] for e in st.session_state.expenses if e['type'] == 'Amortized Loan']; last_loan_payoff = 0
             if loan_expenses:
-                last_loan_payoff_df = df[df[loan_expenses].sum(axis=1) == 0];
-                if not last_loan_payoff_df.empty: last_loan_payoff = last_loan_payoff_df['Age'].min()
+                payoff_ages = []
+                for expense in st.session_state.expenses:
+                    if expense['type'] == 'Amortized Loan' and expense.get('payment', 0) > 0:
+                        try:
+                            monthly_rate = (expense.get('rate', 0) / 100) / 12 if expense.get('rate', 0) > 0 else 0
+                            nper = npf.nper(monthly_rate, -expense['payment'], expense['balance']) if rate > 0 else expense['balance'] / expense['payment']
+                            payoff_ages.append(expense['start_age'] + (nper / 12))
+                        except (ValueError, OverflowError): pass
+                if payoff_ages: last_loan_payoff = int(max(payoff_ages))
+            
             st.markdown(f"You are projected to pay a total of **${-df[expense_cols].sum().sum():,.0f}** towards your major expenses.")
-            if last_loan_payoff > 0: st.markdown(f"A significant milestone occurs at age **{last_loan_payoff}**, when your final major loan is paid off, freeing up cash flow.")
+            if last_loan_payoff > 0 and last_loan_payoff in ages: st.markdown(f"A significant milestone occurs at age **{last_loan_payoff}**, when your final major loan is paid off, freeing up cash flow.")
 
         # --- Other Charts ---
         st.markdown("---")
