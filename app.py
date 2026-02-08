@@ -145,10 +145,19 @@ with tab_report:
         fig.for_each_trace(lambda trace: trace.update(hovertemplate=total_income_hovertemplate) if trace.name == "Total Income" else ())
         
         color_map = {trace.name: trace.line.color for trace in fig.data}
-        for event in event_list:
-            source_color = color_map.get(event['Source'])
-            if source_color and event.get('Value') is not None and event.get('Age') in ages:
-                fig.add_trace(go.Scatter(x=[event['Age']], y=[event['Value']], mode='markers', marker=dict(color=source_color, size=12, symbol='diamond', line=dict(width=2,color='DarkSlateGrey')), name=event['Event'], hovertemplate="<b><u>Event: %{name}</u></b><br><b>Age:</b> %{x}<br><b>Amount:</b> %{y:$,.0f}<extra></extra>", showlegend=False))
+        event_df = pd.DataFrame(event_list)
+        if not event_df.empty:
+            event_df = event_df[event_df['Age'].isin(ages) & event_df['Value'].notna()].copy()
+            event_df['Color'] = event_df['Source'].map(color_map)
+            
+            markers_fig = px.scatter(event_df, x='Age', y='Value', color='Source', color_discrete_map=color_map, custom_data=['Event'])
+            markers_fig.update_traces(
+                marker=dict(size=12, symbol='diamond', line=dict(width=2, color='DarkSlateGrey')),
+                hovertemplate="<b><u>Event: %{customdata[0]}</u></b><br><b>Age:</b> %{x}<br><b>Amount:</b> %{y:$,.0f}<extra></extra>",
+                showlegend=False
+            )
+            for trace in markers_fig.data:
+                fig.add_trace(trace)
         st.plotly_chart(fig, use_container_width=True)
         
         # --- PROFESSIONAL CFP-STYLE REPORT ---
