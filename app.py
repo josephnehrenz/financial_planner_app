@@ -24,7 +24,6 @@ with st.sidebar:
 tab_income, tab_assets, tab_expenses, tab_events, tab_report = st.tabs(["💰 Income", "📈 Assets & Investments", "💸 Expenses", "🏡 Life Events", "📊 Forecast & Report"])
 
 with tab_income:
-    # ... Income tab code is unchanged ...
     st.header("Income Sources"); st.write("Detail all sources of income. Uncheck any source to exclude it from the forecast.")
     c1, c2 = st.columns(2);
     with c1: st.subheader("Primary Job"); inc_job1 = st.checkbox("Include in Forecast", True, key="inc_job1"); job1_name = st.text_input("Source Name", "Primary Job", key="job1_name"); job1_income = st.number_input("Current Annual Salary ($)", 0, None, 75000, 1000, key="job1_income"); job1_growth = st.slider("Annual Salary Growth Rate (%)", 0.0, 10.0, 3.0, 0.1, key="job1_growth")
@@ -36,7 +35,6 @@ with tab_income:
         with c5: st.subheader("Pension 2"); inc_pension2 = st.checkbox("Include in Forecast", False, key="inc_p2"); pension2_name = st.text_input("Source Name", "Corporate Pension", key="pension2_name"); pension2_start_age = st.number_input("Start Age", 40, 80, 65, key="p2_start"); pension2_annual_amount = st.number_input("Annual Amount ($)", 0, None, 12000, 100, key="p2_amount")
 
 with tab_assets:
-    # ... Assets tab code is unchanged ...
     st.header("Assets & Investments"); st.write("Detail your financial accounts that grow over time and can be drawn upon in retirement.")
     c1, c2, c3 = st.columns(3)
     with c1: st.subheader("Pre-Tax Retirement"); inc_pretax = st.checkbox("Include in Forecast", True, key="inc_pretax"); pretax_name = st.text_input("Account Name", "401(k)/Traditional IRA", key="pretax_name"); pretax_balance = st.number_input("Current Balance ($)", 0, None, 50000, 1000, key="pretax_bal"); pretax_contrib = st.number_input("Monthly Contribution ($)", 0, None, 500, 100, key="pretax_con"); pretax_wd_start = st.number_input("Drawdown Start Age", retirement_age, 100, retirement_age, key="pretax_wd_start"); pretax_wd_rate = st.slider("Retirement Drawdown (%/yr)", 0.0, 10.0, 4.0, 0.1, key="pretax_wd")
@@ -49,35 +47,18 @@ with tab_assets:
     with c6: st.number_input("Guns/Heirlooms Value ($)", 0, None, 7000)
 
 with tab_expenses:
-    st.header("Expenses")
-    st.write("Add one-time costs or recurring loans. The forecast will show your total annual expenses.")
+    st.header("Expenses"); st.write("Add one-time costs or recurring loans. The forecast will show your total annual expenses.")
     st.button("Add Expense", on_click=add_expense, type="primary")
-
     for i, expense in enumerate(st.session_state.expenses):
-        st.markdown("---")
-        c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
-        with c1:
-            expense['name'] = st.text_input("Expense Name", expense['name'], key=f"exp_name_{i}")
-            expense['type'] = st.selectbox("Expense Type", ["Amortized Loan", "One-Time Cost"], index=["Amortized Loan", "One-Time Cost"].index(expense['type']), key=f"exp_type_{i}")
-        with c2:
-            expense['balance'] = st.number_input("Total Cost / Loan Balance ($)", 0, None, expense['balance'], key=f"exp_bal_{i}")
-            expense['start_age'] = st.number_input("Start Age", 18, 100, expense['start_age'], key=f"exp_start_age_{i}")
+        st.markdown(f"---"); c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
+        with c1: expense['name'] = st.text_input("Expense Name", expense['name'], key=f"exp_name_{i}"); expense['type'] = st.selectbox("Expense Type", ["Amortized Loan", "One-Time Cost"], index=["Amortized Loan", "One-Time Cost"].index(expense['type']), key=f"exp_type_{i}")
+        with c2: expense['balance'] = st.number_input("Total Cost / Loan Balance ($)", 0, None, expense['balance'], key=f"exp_bal_{i}"); expense['start_age'] = st.number_input("Start Age", 18, 100, expense['start_age'], key=f"exp_start_age_{i}")
         with c3:
-            if expense['type'] == 'Amortized Loan':
-                expense['rate'] = st.slider("Interest Rate (%)", 0.0, 25.0, expense['rate'], 0.1, key=f"exp_rate_{i}")
-                expense['payment'] = st.number_input("Monthly Payment ($)", 0, None, expense['payment'], key=f"exp_payment_{i}")
-        with c4:
-            st.write("##")
-            st.button("Remove", key=f"exp_remove_{i}", on_click=remove_expense, args=(expense['id'],))
-        
+            if expense['type'] == 'Amortized Loan': expense['rate'] = st.slider("Interest Rate (%)", 0.0, 25.0, expense['rate'], 0.1, key=f"exp_rate_{i}"); expense['payment'] = st.number_input("Monthly Payment ($)", 0, None, expense['payment'], key=f"exp_payment_{i}")
+        with c4: st.write("##"); st.button("Remove", key=f"exp_remove_{i}", on_click=remove_expense, args=(expense['id'],))
         if expense['type'] == 'Amortized Loan' and expense['payment'] > 0 and expense['rate'] > 0:
-            try:
-                monthly_rate = (expense['rate'] / 100) / 12
-                nper = npf.nper(monthly_rate, -expense['payment'], expense['balance'])
-                years_to_payoff = nper / 12
-                st.metric("Estimated Years to Payoff", f"{years_to_payoff:.1f} years")
-            except (ValueError, OverflowError):
-                st.warning("Cannot calculate payoff with current values (payment may be too low).")
+            try: nper = npf.nper((expense['rate'] / 100) / 12, -expense['payment'], expense['balance']); st.metric("Estimated Years to Payoff", f"{(nper/12):.1f} years")
+            except (ValueError, OverflowError): st.warning("Cannot calculate payoff with current values.")
 
 with tab_events: st.header("Major Life Events"); st.info("Functionality for this tab will be built next.")
 
@@ -90,7 +71,6 @@ with tab_report:
         df = pd.DataFrame(index=years, data={'Age': ages}); event_list = []
         
         # --- Asset Calculations ---
-        # ... (Asset calculation code is unchanged) ...
         asset_cols, drawdown_cols = [], []
         if inc_pretax: df[pretax_name] = 0; df.loc[start_year, pretax_name] = pretax_balance; asset_cols.append(pretax_name); df[f"{pretax_name} Drawdown"] = 0; drawdown_cols.append(f"{pretax_name} Drawdown")
         if inc_roth: df[roth_name] = 0; df.loc[start_year, roth_name] = roth_balance; asset_cols.append(roth_name); df[f"{roth_name} Drawdown"] = 0; drawdown_cols.append(f"{roth_name} Drawdown")
@@ -105,12 +85,10 @@ with tab_report:
                 else:
                     wd_start, wd_rate = {'401(k)/Traditional IRA': (pretax_wd_start, pretax_wd_rate), 'Roth IRA/401(k)': (roth_wd_start, roth_wd_rate), 'Taxable Brokerage': (brokerage_wd_start, brokerage_wd_rate)}.get(col)
                     if (col == pretax_name and age >= rmd_start_age) or age >= wd_start:
-                        drawdown = (prev_balance + growth) * (wd_rate / 100)
-                        df.loc[year, f"{col} Drawdown"] = drawdown
+                        drawdown = (prev_balance + growth) * (wd_rate / 100); df.loc[year, f"{col} Drawdown"] = drawdown
                     df.loc[year, col] = prev_balance + growth - drawdown
 
         # --- Income Calculations ---
-        # ... (Income calculation code is unchanged) ...
         if inc_job1: job1_incomes = [(job1_income * (1 + job1_growth / 100)**i) if age < retirement_age else 0 for i, age in enumerate(ages)]; df[job1_name] = job1_incomes; event_list.append({'Age': retirement_age - 1, 'Value': job1_incomes[ages.index(retirement_age-1)], 'Event': f'{job1_name} Ends', 'Source': job1_name})
         if inc_job2: job2_incomes = [(job2_income * (1 + job2_growth / 100)**i) if age < retirement_age else 0 for i, age in enumerate(ages)]; df[job2_name] = job2_incomes; event_list.append({'Age': retirement_age - 1, 'Value': job2_incomes[ages.index(retirement_age-1)], 'Event': f'{job2_name} Ends', 'Source': job2_name})
         if inc_ss: df[ss_name] = [ss_annual_amount if age >= ss_start_age else 0 for age in ages]; event_list.append({'Age': ss_start_age, 'Value': ss_annual_amount, 'Event': f'{ss_name} Begins', 'Source': ss_name})
@@ -123,56 +101,43 @@ with tab_report:
         # --- Expense Calculations ---
         df['Total Expenses'] = 0
         for expense in st.session_state.expenses:
-            expense_name = expense['name']
-            df[expense_name] = 0
-            start_age, balance = expense['start_age'], expense['balance']
-            
-            if expense['type'] == 'One-Time Cost':
-                if start_age in ages: df.loc[df['Age'] == start_age, expense_name] = -balance; event_list.append({'Age': start_age, 'Value': -balance, 'Event': f'{expense_name} Occurs', 'Source': 'Total Expenses'})
+            expense_name = expense['name']; df[expense_name] = 0; start_age, balance = expense['start_age'], expense['balance']
+            if expense['type'] == 'One-Time Cost' and start_age in ages: df.loc[df['Age'] == start_age, expense_name] = -balance; event_list.append({'Age': start_age, 'Value': -balance, 'Event': f'{expense_name} Occurs', 'Source': 'Total Expenses'})
             elif expense['type'] == 'Amortized Loan':
                 pmt, rate = expense['payment'], expense['rate']
-                if pmt > 0 and rate > 0:
+                if pmt > 0:
                     try:
-                        nper = npf.nper((rate / 100) / 12, -pmt, balance)
-                        payoff_age = start_age + (nper / 12)
+                        monthly_rate = (rate / 100) / 12 if rate > 0 else 0; nper = npf.nper(monthly_rate, -pmt, balance) if rate > 0 else balance / pmt; payoff_age = start_age + (nper / 12)
                         for age_ in range(start_age, int(payoff_age) + 1):
                             if age_ in ages: df.loc[df['Age'] == age_, expense_name] = -(pmt * 12)
                         if start_age in ages: event_list.append({'Age': start_age, 'Value': -(pmt*12), 'Event': f'{expense_name} Begins', 'Source': 'Total Expenses'})
-                        if payoff_age in ages: event_list.append({'Age': int(payoff_age), 'Value': -(pmt*12), 'Event': f'{expense_name} Paid Off', 'Source': 'Total Expenses'})
+                        if int(payoff_age) in ages: event_list.append({'Age': int(payoff_age), 'Value': df.loc[df['Age'] == int(payoff_age), expense_name].values[0], 'Event': f'{expense_name} Paid Off', 'Source': 'Total Expenses'})
                     except (ValueError, OverflowError): pass
             df['Total Expenses'] += df[expense_name]
 
         # --- Final Aggregation ---
         income_cols = [c for c in [job1_name, job2_name, ss_name, pension1_name, pension2_name] + drawdown_cols if c in df.columns]; df['Total Income'] = df[income_cols].sum(axis=1)
-        df['Net Annual Cash Flow'] = df['Total Income'] + df['Total Expenses'] # Expenses are negative
+        df['Net Annual Cash Flow'] = df['Total Income'] + df['Total Expenses']
+        chart_cols = income_cols + ['Total Expenses', 'Net Annual Cash Flow', 'Total Income']
+        df_melted = df.reset_index().melt(id_vars=['index', 'Age'], value_vars=chart_cols, var_name='Source', value_name='Value'); df_melted.rename(columns={'index':'Year'}, inplace=True)
         
-        income_chart_cols = income_cols + ['Total Income', 'Total Expenses', 'Net Annual Cash Flow']
-        df_melted = df.reset_index().melt(id_vars=['index', 'Age'], value_vars=income_chart_cols, var_name='Source', value_name='Value'); df_melted.rename(columns={'index':'Year'}, inplace=True)
-        
-        # --- Charting ---
+        # --- Charting (Simplified & Robust) ---
         st.subheader("Cash Flow Forecast")
-        hover_selection = alt.selection_single(fields=['Age'], nearest=True, on='mouseover', empty='none', clear='mouseout')
-        
-        base = alt.Chart(df_melted).encode(x=alt.X('Age:O', title='Your Age'))
-        
-        line_chart = base.mark_line(size=3).encode(
+        line_chart = alt.Chart(df_melted).mark_line(size=3).encode(
+            x=alt.X('Age:O', title='Your Age'),
             y=alt.Y('Value:Q', title='Annual Cash Flow', axis=alt.Axis(format='$,.0f')),
-            color=alt.Color('Source:N', scale=alt.Scale(domain=income_chart_cols, range=['#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c', '#98df8a', '#d62728', '#ff9896', '#9467bd', '#c5b0d5', '#8c564b', '#c49c94', '#e377c2', '#f7b6d2', '#7f7f7f', '#c7c7c7', '#bcbd22', '#dbdb8d', '#17becf', '#9edae5'])),
-        )
+            color=alt.Color('Source:N', legend=alt.Legend(title="Data Source")),
+            tooltip=['Year', 'Age', 'Source', alt.Tooltip('Value:Q', format='$,.0f')]
+        ).properties(title='Annual Cash Flow Over Time')
         
-        points = line_chart.mark_point().encode(opacity=alt.condition(hover_selection, alt.value(1), alt.value(0)))
-        
-        rule = base.mark_rule(color='gray').encode(x='Age:O').transform_filter(hover_selection)
-        
-        tooltip_chart = alt.Chart(df_melted).mark_text(align='left', dx=5, dy=-5).encode(
-            text=alt.condition(hover_selection, alt.Text('Value:Q', format='$,.0f'), alt.value(' ')),
-            x='Age:O',
-            y='Value:Q',
-            color='Source:N'
-        ).transform_filter(hover_selection)
-
-        final_chart = alt.layer(line_chart, points, rule, tooltip_chart).interactive()
-        st.altair_chart(final_chart, use_container_width=True)
+        if event_list:
+            events_df = pd.DataFrame(event_list).dropna()
+            event_markers = alt.Chart(events_df).mark_circle(size=150, stroke='white', strokeWidth=2).encode(
+                x=alt.X('Age:O'), y=alt.Y('Value:Q'), color=alt.Color('Source:N'), tooltip=['Age', 'Event']
+            )
+            final_chart = alt.layer(line_chart, event_markers)
+        else: final_chart = line_chart
+        st.altair_chart(final_chart.interactive(), use_container_width=True)
 
         st.subheader("Asset Growth Forecast");
         assets_melted = df.reset_index().melt(id_vars=['index', 'Age'], value_vars=asset_cols, var_name='Account', value_name='Balance'); assets_melted.rename(columns={'index':'Year'}, inplace=True)
