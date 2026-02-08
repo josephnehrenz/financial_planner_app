@@ -147,9 +147,10 @@ with tab_report:
         
         color_map = {trace.name: trace.line.color for trace in fig.data}
         for event in event_list:
-            source = event.get('Source', 'Total Expenses')
-            if source in color_map and event.get('Value') is not None:
-                fig.add_trace(go.Scatter(x=[event['Age']], y=[event['Value']], mode='markers', marker=dict(color=color_map[source], size=10, symbol='diamond', line=dict(width=1, color='DarkSlateGrey')), name=event['Event'], hovertemplate="<b><u>Event: %{name}</u></b><br><b>Age:</b> %{x}<br><b>Amount:</b> %{y:$,.0f}<extra></extra>", legendgroup='events', showlegend=True))
+            source_color = color_map.get(event['Source'])
+            if source_color and event.get('Value') is not None:
+                fig.add_annotation(x=event['Age'], y=event['Value'], text=event['Event'], showarrow=True, arrowhead=1, bgcolor="#E8E8E8", bordercolor="black", borderwidth=1, ax=20, ay=-40)
+                fig.add_trace(go.Scatter(x=[event['Age']], y=[event['Value']], mode='markers', marker=dict(color=source_color, size=10, symbol='diamond', line=dict(width=1,color='DarkSlateGrey')), showlegend=False, hovertemplate="<b><u>Event: "+event['Event']+"</u></b><br><b>Age:</b> %{x}<br><b>Amount:</b> %{y:$,.0f}<extra></extra>"))
         st.plotly_chart(fig, use_container_width=True)
         
         # --- PROFESSIONAL CFP-STYLE REPORT ---
