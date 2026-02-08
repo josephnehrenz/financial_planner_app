@@ -84,7 +84,6 @@ with tab_report:
         start_year = datetime.date.today().year; years = list(range(start_year, start_year + forecast_length + 1)); ages = list(range(current_age, current_age + forecast_length + 1))
         df = pd.DataFrame(index=years, data={'Age': ages})
         
-        # ... (Asset, Income, and Expense calculations are largely unchanged, but we capture more data for the report) ...
         total_contributions = 0; event_list = []
         asset_cols, drawdown_cols = [], []
         if inc_pretax: df[pretax_name] = 0; df.loc[start_year, pretax_name] = pretax_balance; asset_cols.append(pretax_name); df[f"{pretax_name} Drawdown"] = 0; drawdown_cols.append(f"{pretax_name} Drawdown")
@@ -149,8 +148,7 @@ with tab_report:
         for event in event_list:
             source_color = color_map.get(event['Source'])
             if source_color and event.get('Value') is not None:
-                fig.add_annotation(x=event['Age'], y=event['Value'], text=event['Event'], showarrow=True, arrowhead=1, bgcolor="#E8E8E8", bordercolor="black", borderwidth=1, ax=20, ay=-40)
-                fig.add_trace(go.Scatter(x=[event['Age']], y=[event['Value']], mode='markers', marker=dict(color=source_color, size=10, symbol='diamond', line=dict(width=1,color='DarkSlateGrey')), showlegend=False, hovertemplate="<b><u>Event: "+event['Event']+"</u></b><br><b>Age:</b> %{x}<br><b>Amount:</b> %{y:$,.0f}<extra></extra>"))
+                fig.add_trace(go.Scatter(x=[event['Age']], y=[event['Value']], mode='markers', marker=dict(color=source_color, size=10, symbol='diamond', line=dict(width=1,color='DarkSlateGrey')), name=event['Event'], hovertemplate="<b><u>Event: %{name}</u></b><br><b>Age:</b> %{x}<br><b>Amount:</b> %{y:$,.0f}<extra></extra>", showlegend=False))
         st.plotly_chart(fig, use_container_width=True)
         
         # --- PROFESSIONAL CFP-STYLE REPORT ---
