@@ -7,12 +7,10 @@ import altair as alt
 st.set_page_config(page_title="Future Wealth Planner", page_icon="💰", layout="wide")
 
 # --- INITIALIZE SESSION STATE ---
-# We still need session state to know *when* to draw the report, but not to create the tab
 if 'report_ready' not in st.session_state:
     st.session_state.report_ready = False
 
 def run_calculation():
-    """Sets the flag to show the report content."""
     st.session_state.report_ready = True
 
 # --- HEADER ---
@@ -31,7 +29,7 @@ with st.sidebar:
     st.markdown("---")
     st.button("Calculate Financial Future", on_click=run_calculation, use_container_width=True, type="primary")
 
-# --- DEFINE TABS (Now static, as per your suggestion) ---
+# --- DEFINE TABS ---
 tab_income, tab_assets, tab_expenses, tab_events, tab_report = st.tabs([
     "💰 Income", "📈 Assets & Investments", "💸 Expenses", "🏡 Life Events", "📊 Forecast & Report"
 ])
@@ -82,26 +80,31 @@ with tab_report:
         # --- Data Preparation ---
         start_year = datetime.date.today().year; years = list(range(start_year, start_year + forecast_length + 1)); ages = list(range(current_age, current_age + forecast_length + 1))
         income_df = pd.DataFrame(index=years, data={'Age': ages}); event_list = []
+        
+        # --- Income Calculations with Refined Event Logic ---
         if inc_job1:
             job1_incomes = [(job1_income * (1 + job1_growth / 100)**i) if age < retirement_age else 0 for i, age in enumerate(ages)]; income_df[job1_name] = job1_incomes
-            if retirement_age in ages and any(v > 0 for v in job1_incomes):
-                retirement_index = ages.index(retirement_age);
-                if retirement_index > 0: event_list.append({'Age': retirement_age, 'Value': job1_incomes[retirement_index - 1], 'Event': f'{job1_name} Ends', 'Color': '#d62728'})
+            if retirement_age-1 in ages and any(v > 0 for v in job1_incomes):
+                retirement_idx = ages.index(retirement_age - 1)
+                event_list.append({'Age': retirement_age - 1, 'Value': job1_incomes[retirement_idx], 'Event': f'{job1_name} Ends', 'Source': job1_name})
         if inc_job2:
             job2_incomes = [(job2_income * (1 + job2_growth / 100)**i) if age < retirement_age else 0 for i, age in enumerate(ages)]; income_df[job2_name] = job2_incomes
-            if retirement_age in ages and any(v > 0 for v in job2_incomes):
-                retirement_index = ages.index(retirement_age)
-                if retirement_index > 0: event_list.append({'Age': retirement_age, 'Value': job2_incomes[retirement_index - 1], 'Event': f'{job2_name} Ends', 'Color': '#d62728'})
+            if retirement_age-1 in ages and any(v > 0 for v in job2_incomes):
+                retirement_idx = ages.index(retirement_age - 1)
+                event_list.append({'Age': retirement_age - 1, 'Value': job2_incomes[retirement_idx], 'Event': f'{job2_name} Ends', 'Source': job2_name})
         if inc_ss:
             income_df[ss_name] = [ss_annual_amount if age >= ss_start_age else 0 for age in ages]
-            if ss_annual_amount > 0 and ss_start_age in ages: event_list.append({'Age': ss_start_age, 'Value': 0, 'Event': f'{ss_name} Begins', 'Color': '#2ca02c'})
+            if ss_annual_amount > 0 and ss_start_age in ages:
+                event_list.append({'Age': ss_start_age, 'Value': ss_annual_amount, 'Event': f'{ss_name} Begins', 'Source': ss_name})
         if inc_pension1:
             income_df[pension1_name] = [pension1_annual_amount if age >= pension1_start_age else 0 for age in ages]
-            if pension1_annual_amount > 0 and pension1_start_age in ages: event_list.append({'Age': pension1_start_age, 'Value': 0, 'Event': f'{pension1_name} Begins', 'Color': '#2ca02c'})
+            if pension1_annual_amount > 0 and pension1_start_age in ages:
+                event_list.append({'Age': pension1_start_age, 'Value': pension1_annual_amount, 'Event': f'{pension1_name} Begins', 'Source': pension1_name})
         if inc_pension2:
             income_df[pension2_name] = [pension2_annual_amount if age >= pension2_start_age else 0 for age in ages]
-            if pension2_annual_amount > 0 and pension2_start_age in ages: event_list.append({'Age': pension2_start_age, 'Value': 0, 'Event': f'{pension2_name} Begins', 'Color': '#2ca02c'})
-        
+            if pension2_annual_amount > 0 and pension2_start_age in ages:
+                event_list.append({'Age': pension2_start_age, 'Value': pension2_annual_amount, 'Event': f'{pension2_name} Begins', 'Source': pension2_name})
+
         income_columns = [c for c in [job1_name, job2_name, ss_name, pension1_name, pension2_name] if c in income_df.columns and not income_df[c].empty]
         if income_columns: income_df['Total Income'] = income_df[income_columns].sum(axis=1)
         else: income_df['Total Income'] = 0
@@ -112,15 +115,16 @@ with tab_report:
             x=alt.X('Age:O', title='Your Age'), y=alt.Y('Value:Q', title='Annual Income', axis=alt.Axis(format='$,.0f')), color='Source:N', tooltip=['Year', 'Age', 'Source', alt.Tooltip('Value:Q', format='$,.0f')]
         ).properties(title='Income Streams and Life Events Over Time')
         
-        # *** FINAL FIX: Layering logic is now robust ***
         if event_list:
             events_df = pd.DataFrame(event_list)
             event_markers = alt.Chart(events_df).mark_circle(size=150, stroke='white', strokeWidth=2).encode(
-                x=alt.X('Age:O'), y=alt.Y('Value:Q'), color=alt.Color('Color:N', scale=None), tooltip=['Age', 'Event']
+                x=alt.X('Age:O'), y=alt.Y('Value:Q'), 
+                color=alt.Color('Source:N'), # *** FIX: Color markers by the 'Source' field to match the lines ***
+                tooltip=['Age', 'Event']
             )
-            final_chart = alt.layer(line_chart, event_markers) # The problematic .resolve_scale() is removed
+            final_chart = alt.layer(line_chart, event_markers)
         else:
-            final_chart = line_chart # If no events, the chart is just the lines
+            final_chart = line_chart
 
         st.altair_chart(final_chart.interactive(), use_container_width=True)
 
